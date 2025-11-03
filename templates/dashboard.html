@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Job Application Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Job Applications Dashboard</h2>
+    <h1 class="welcome">Welcome back, <strong>{{ session.user_name }}</strong>!</h1>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ jobs|length }}</h3>
+        <p>Total Applications</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Interview')|list|length }}</h3>
+        <p>Interviews</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Hired')|list|length }}</h3>
+        <p>Hired</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Applied')|list|length }}</h3>
+        <p>Applied</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Rejected')|list|length }}</h3>
+        <p>Rejected</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Offered')|list|length }}</h3>
+        <p>Offered</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ jobs|selectattr('Status', 'equalto', 'Withdrawn')|list|length }}</h3>
+        <p>Withdrawn</p>
+    </div>
+</div>
+
+<div class="jobs-table-container">
+    <table class="jobs-table">
+        <thead>
+            <tr>
+                <th>Job ID</th>
+                <th>Role</th>
+                <th>Company</th>
+                <th>Status</th>
+                <th>Recruiter</th>
+                <th>Location</th>
+                <th>Date Applied</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td>{{ job.JobID }}</td>
+                <td>{{ job.Role }}</td>
+                <td>{{ job.Company_Name or 'N/A' }}</td>
+                <td><span class="status-badge status-{{ job.Status.lower() }}">{{ job.Status }}</span></td>
+                <td>{{ job.RecruiterFName or '' }} {{ job.RecruiterLName or '' }}</td>
+                <td>{{ job.City or 'N/A' }}</td>
+                <td>{{ job.Dateofapplication }}</td>
+                <td>
+                    <a href="{{ job.Link }}" class="btn btn-sm" target="_blank">View</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8">No jobs found. <a href="{{ url_for('jobs') }}">Add a job</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Companies - Job Application Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Companies</h2>
+    <div>
+        <a class="btn btn-secondary"
+            href="{{ url_for('companies', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">Sort by ID {% if
+            sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}</a>
+        <button class="btn btn-primary" onclick="toggleModal('addCompanyModal')">Add New Company</button>
+    </div>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Company ID</th>
+            <th>Company Name</th>
+            <th>Website</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for company in companies %}
+        <tr>
+            <td>{{ company.CompanyID }}</td>
+            <td>{{ company.Company_Name }}</td>
+            <td><a href="{{ company.Website }}" target="_blank">{{ company.Website }}</a></td>
+            <td>
+                <button class="btn btn-sm"
+                    onclick="editCompany('{{ company.CompanyID }}', '{{ company.Company_Name }}', '{{ company.Website }}')">Edit</button>
+                <form method="POST" action="{{ url_for('delete_company', company_id=company.CompanyID) }}"
+                    style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Delete this company?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Add Company Modal -->
+<div id="addCompanyModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="toggleModal('addCompanyModal')">&times;</span>
+        <h3>Add New Company</h3>
+        <form method="POST" action="{{ url_for('add_company') }}">
+            <input type="text" name="company_id" placeholder="Company ID" required>
+            <input type="text" name="name" placeholder="Company Name" required>
+            <input type="url" name="website" placeholder="Website URL" required>
+            <button type="submit" class="btn btn-primary">Add Company</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleModal(id) {
+        document.getElementById(id).classList.toggle('show');
+    }
+
+    function editCompany(id, name, website) {
+        const row = event.target.closest('tr');
+        row.innerHTML = `
+        <td>${id}</td>
+        <td><input type="text" value="${name}" name="name"></td>
+        <td><input type="url" value="${website}" name="website"></td>
+        <td>
+            <form method="POST" action="/companies/edit/${id}" style="display:inline;">
+                <input type="hidden" name="name" value="">
+                <input type="hidden" name="website" value="">
+                <button type="submit" class="btn btn-sm">Save</button>
+            </form>
+            <button class="btn btn-sm" onclick="location.reload()">Cancel</button>
+        </td>
+    `;
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Interviews - Job Application Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Interviews</h2>
+    <div>
+        <a class="btn btn-secondary"
+            href="{{ url_for('interviews', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">Sort by ID {% if
+            sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}</a>
+        <button class="btn btn-primary" onclick="toggleModal('addInterviewModal')">Schedule Interview</button>
+    </div>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Interview ID</th>
+            <th>Date</th>
+            <th>User</th>
+            <th>Job Role</th>
+            <th>Mode</th>
+            <th>Status</th>
+            <th>Rounds</th>
+            <th>Description</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% if interviews %}
+        {% for interview in interviews %}
+        <tr data-interview-id="{{ interview.InterviewID }}" data-interview-date="{{ interview.IDate or '' }}"
+            data-interview-mode="{{ interview.Mode }}" data-interview-status="{{ interview.RoundStatus or 'Pending' }}"
+            data-interview-rounds="{{ interview.Rounds or 1 }}"
+            data-interview-description="{{ (interview.Description or '')|e }}">
+            <td>{{ interview.InterviewID }}</td>
+            <td>{{ interview.IDate or 'N/A' }}</td>
+            <td>{% if interview.FName or interview.LName %}{{ interview.FName or '' }} {{ interview.LName or '' }}{%
+                else %}N/A{% endif %}</td>
+            <td>{{ interview.Role or 'N/A' }}</td>
+            <td><span class="status-badge">{{ interview.Mode }}</span></td>
+            <td><span class="status-badge status-{{ (interview.RoundStatus or 'Pending')|lower|replace(' ', '-') }}">{{
+                    interview.RoundStatus or 'Pending' }}</span></td>
+            <td>{{ interview.Rounds or 'N/A' }}</td>
+            <td>{{ interview.Description or 'N/A' }}</td>
+            <td>
+                <button class="btn btn-sm" onclick="editInterview(this)">Edit</button>
+                <form method="POST" action="{{ url_for('delete_interview', interview_id=interview.InterviewID) }}"
+                    style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Delete this interview?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr>
+            <td colspan="9" style="text-align: center; padding: 20px;">
+                No interviews scheduled. Click "Schedule Interview" to add one.
+            </td>
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+
+<!-- Add Interview Modal -->
+<div id="addInterviewModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="toggleModal('addInterviewModal')">&times;</span>
+        <h3>Schedule Interview</h3>
+        <form method="POST" action="{{ url_for('add_interview') }}">
+            <input type="text" name="interview_id" placeholder="Interview ID" required>
+            <input type="date" name="date" required>
+            <select name="user_id" required>
+                <option value="">Select User</option>
+                {% for user in users %}
+                <option value="{{ user.UserID }}">{{ user.FName }} {{ user.LName }}</option>
+                {% endfor %}
+            </select>
+            <select name="job_id" required>
+                <option value="">Select Job</option>
+                {% for job in jobs %}
+                <option value="{{ job.JobID }}">{{ job.Role }}</option>
+                {% endfor %}
+            </select>
+            <select name="mode" required>
+                <option value="Online">Online</option>
+                <option value="Offline">Offline</option>
+            </select>
+            <input type="number" name="rounds" placeholder="Number of Rounds" min="1" value="1">
+            <textarea name="description" placeholder="Description"></textarea>
+            <button type="submit" class="btn btn-primary">Schedule Interview</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleModal(id) {
+        document.getElementById(id).classList.toggle('show');
+    }
+
+    function editInterview(button) {
+        const row = button.closest('tr');
+
+        // Get data from data attributes
+        const id = row.getAttribute('data-interview-id') || '';
+        const date = row.getAttribute('data-interview-date') || '';
+        const mode = row.getAttribute('data-interview-mode') || 'Online';
+        const status = row.getAttribute('data-interview-status') || 'Pending';
+        const rounds = row.getAttribute('data-interview-rounds') || '1';
+        const description = row.getAttribute('data-interview-description') || '';
+
+        // Escape values for HTML
+        const escapeHtml = (text) => {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        const escapedMode = escapeHtml(mode);
+        const escapedStatus = escapeHtml(status);
+        const escapedRounds = escapeHtml(rounds);
+        const escapedDescription = escapeHtml(description);
+
+        // Determine valid next statuses based on current status
+        // Status order: Cancelled (0), Pending (1), In Progress (2), Completed (3)
+        // Trigger prevents going backwards (new < old)
+        let validStatuses = [];
+
+        if (status === 'Pending') {
+            validStatuses = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
+        } else if (status === 'In Progress') {
+            validStatuses = ['In Progress', 'Completed', 'Cancelled'];
+        } else if (status === 'Completed') {
+            validStatuses = ['Completed']; // Can't go backwards
+        } else if (status === 'Cancelled') {
+            validStatuses = ['Cancelled']; // Can't change from cancelled
+        } else {
+            validStatuses = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
+        }
+
+        const statusOptions = validStatuses.map(s => {
+            const selected = s === status ? 'selected' : '';
+            return `<option value="${escapeHtml(s)}" ${selected}>${escapeHtml(s)}</option>`;
+        }).join('');
+
+        // Get the current row data for User and Job (non-editable fields)
+        const currentCells = row.querySelectorAll('td');
+        const userInfo = currentCells[2] ? currentCells[2].textContent.trim() : 'N/A';
+        const jobInfo = currentCells[3] ? currentCells[3].textContent.trim() : 'N/A';
+
+        const escapedId = escapeHtml(id);
+
+        row.innerHTML = `
+        <td>${escapedId}</td>
+        <td>
+            <input name="date" type="date" value="${date}" required style="width:95%;" form="editForm_${escapedId}">
+        </td>
+        <td style="font-style: italic; color: #666;">${escapeHtml(userInfo)} <small>(read-only)</small></td>
+        <td style="font-style: italic; color: #666;">${escapeHtml(jobInfo)} <small>(read-only)</small></td>
+        <td>
+            <select name="mode" required style="width:100%;" form="editForm_${escapedId}">
+                <option value="Online" ${mode === 'Online' ? 'selected' : ''}>Online</option>
+                <option value="Offline" ${mode === 'Offline' ? 'selected' : ''}>Offline</option>
+            </select>
+        </td>
+        <td>
+            <select name="round_status" required style="width:100%;" form="editForm_${escapedId}">
+                ${statusOptions}
+            </select>
+        </td>
+        <td>
+            <input name="rounds" type="number" value="${escapedRounds}" min="1" required style="width:95%;" form="editForm_${escapedId}">
+        </td>
+        <td>
+            <textarea name="description" placeholder="Description" style="width:95%; min-height:40px;" form="editForm_${escapedId}">${escapedDescription}</textarea>
+        </td>
+        <td>
+            <form method="POST" action="/interviews/edit/${escapedId}" id="editForm_${escapedId}">
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm" onclick="window.location.reload()">Cancel</button>
+            </form>
+        </td>
+    `;
+    }
+</script>
+{% endblock %}

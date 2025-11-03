@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs - Job Application Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Job Applications</h2>
+    <div>
+        <a class="btn btn-secondary" href="{{ url_for('jobs', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">Sort
+            by ID {% if sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}</a>
+        <button class="btn btn-primary" onclick="toggleModal('addJobModal')">Add New Job</button>
+    </div>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Job ID</th>
+            <th>Role</th>
+            <th>Company</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Recruiter</th>
+            <th>Date</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.JobID }}</td>
+            <td>{{ job.Role }}</td>
+            <td>{{ job.Company_Name or 'N/A' }}</td>
+            <td>{{ job.Street or '' }}{% if job.Street and job.City %}, {% endif %}{{ job.City or '' }}</td>
+            <td><span class="status-badge status-{{ job.Status.lower() }}">{{ job.Status }}</span></td>
+            <td>{{ job.RecruiterFName or '' }} {{ job.RecruiterLName or '' }}</td>
+            <td>{{ job.Dateofapplication }}</td>
+            <td>
+                <button class="btn btn-sm"
+                    onclick="editJob('{{ job.JobID }}', '{{ job.Role|e }}', '{{ job.Status|e }}', '{{ job.Link|e }}', '{{ job.CompanyID|e }}', '{{ job.RecruitmentID|e }}', '{{ job.Dateofapplication }}', '{{ job.Street|e }}', '{{ job.City|e }}')">Edit</button>
+                <form method="POST" action="{{ url_for('delete_job', job_id=job.JobID) }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Delete this job?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Add Job Modal -->
+<div id="addJobModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="toggleModal('addJobModal')">&times;</span>
+        <h3>Add New Job</h3>
+        <form method="POST" action="{{ url_for('add_job') }}">
+            <input type="text" name="job_id" placeholder="Job ID" required>
+            <input type="text" name="role" placeholder="Role" required>
+            <select name="status" required>
+                <option value="Applied">Applied</option>
+                <option value="Interview">Interview</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Hired">Hired</option>
+                <option value="Offered">Offered</option>
+                <option value="Withdrawn">Withdrawn</option>
+            </select>
+            <input type="url" name="link" placeholder="Job Link">
+            <select name="company_id">
+                <option value="">Select Company</option>
+                {% for company in companies %}
+                <option value="{{ company.CompanyID }}">{{ company.Company_Name }}</option>
+                {% endfor %}
+            </select>
+            <select name="recruitment_id">
+                <option value="">Select Recruiter</option>
+                {% for recruiter in recruiters %}
+                <option value="{{ recruiter.RecruitmentID }}">{{ recruiter.FName }} {{ recruiter.LName }}</option>
+                {% endfor %}
+            </select>
+            <input type="date" name="date_applied" value="">
+            <input type="text" name="street" placeholder="Street">
+            <input type="text" name="city" placeholder="City">
+            <button type="submit" class="btn btn-primary">Add Job</button>
+        </form>
+    </div>
+</div>
+
+<script type="application/json" id="companies-data">{{ companies|tojson }}</script>
+<script type="application/json" id="recruiters-data">{{ recruiters|tojson }}</script>
+<script>
+    const companiesData = JSON.parse(document.getElementById('companies-data').textContent);
+    const recruitersData = JSON.parse(document.getElementById('recruiters-data').textContent);
+
+    function toggleModal(id) {
+        document.getElementById(id).classList.toggle('show');
+    }
+
+    function editJob(jobId, role, status, link, companyId, recruiterId, date = '', street = '', city = '') {
+        const companies = companiesData;
+        const recruiters = recruitersData;
+        const row = event.target.closest('tr');
+
+        // Escape values for HTML
+        const escapeHtml = (text) => {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        role = escapeHtml(role || '');
+        link = escapeHtml(link || '');
+        companyId = companyId || '';
+        recruiterId = recruiterId || '';
+        date = date || '';
+
+        row.innerHTML = `
+        <td>${jobId}</td>
+        <td>
+            <input name="role" type="text" value="${role}" required style="width:95%;" form="editForm_${jobId}">
+        </td>
+        <td>
+            <select name="company_id" required style="width:100%;" form="editForm_${jobId}">
+                <option value="">Select Company</option>
+                ${companies.map(c => `<option value="${escapeHtml(c.CompanyID)}" ${c.CompanyID === companyId ? 'selected' : ''}>${escapeHtml(c.Company_Name)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <input name="street" type="text" value="${escapeHtml(street || '')}" placeholder="Street" form="editForm_${jobId}">
+            <input name="city" type="text" value="${escapeHtml(city || '')}" placeholder="City" form="editForm_${jobId}">
+        </td>
+        <td>
+            <select name="status" required style="width:100%;" form="editForm_${jobId}">
+                <option value="Applied"${status === 'Applied' ? ' selected' : ''}>Applied</option>
+                <option value="Interview"${status === 'Interview' ? ' selected' : ''}>Interview</option>
+                <option value="Rejected"${status === 'Rejected' ? ' selected' : ''}>Rejected</option>
+                <option value="Hired"${status === 'Hired' ? ' selected' : ''}>Hired</option>
+                <option value="Offered"${status === 'Offered' ? ' selected' : ''}>Offered</option>
+                <option value="Withdrawn"${status === 'Withdrawn' ? ' selected' : ''}>Withdrawn</option>
+            </select>
+        </td>
+        <td>
+            <select name="recruitment_id" required style="width:100%;" form="editForm_${jobId}">
+                <option value="">Select Recruiter</option>
+                ${recruiters.map(r => `<option value="${escapeHtml(r.RecruitmentID)}" ${r.RecruitmentID === recruiterId ? 'selected' : ''}>${escapeHtml(r.FName)} ${escapeHtml(r.LName)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <input name="date_applied" type="date" value="${date}" required style="width:100%;" form="editForm_${jobId}">
+        </td>
+        <td>
+            <form method="POST" action="/jobs/edit/${jobId}" id="editForm_${jobId}">
+                <input type="hidden" name="link" value="${link}">
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm" onclick="window.location.reload()">Cancel</button>
+            </form>
+        </td>
+    `;
+    }
+</script>
+{% endblock %}

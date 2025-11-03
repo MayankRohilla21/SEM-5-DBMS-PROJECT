@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Recruiters - Job Application Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Recruiters</h2>
+    <div>
+        <a class="btn btn-secondary"
+            href="{{ url_for('recruitment', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">Sort by ID {% if
+            sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}</a>
+        <button class="btn btn-primary" onclick="toggleModal('addRecruiterModal')">Add New Recruiter</button>
+    </div>
+</div>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Company</th>
+            <th>Supervisor</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for recruiter in recruiters %}
+        <tr>
+            <td>{{ recruiter.RecruitmentID }}</td>
+            <td>{{ recruiter.FName }} {{ recruiter.LName }}</td>
+            <td>{{ recruiter.Email }}</td>
+            <td>{{ recruiter.Phonenumber }}</td>
+            <td>{{ recruiter.Company_Name or 'N/A' }}</td>
+            <td>{{ recruiter.SupervisorFName or '' }} {{ recruiter.SupervisorLName or 'N/A' }}</td>
+            <td>
+                <button class="btn btn-sm"
+                    onclick="editRecruiter('{{ recruiter.RecruitmentID }}', '{{ recruiter.FName|e }}', '{{ recruiter.LName|e }}', '{{ recruiter.Email|e }}', '{{ recruiter.Phonenumber|e }}', '{{ recruiter.CompanyID|e }}', '{{ recruiter.SUPERVISOR|e }}')">Edit</button>
+                <form method="POST" action="{{ url_for('delete_recruiter', recruiter_id=recruiter.RecruitmentID) }}"
+                    style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Delete this recruiter?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Add Recruiter Modal -->
+<div id="addRecruiterModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="toggleModal('addRecruiterModal')">&times;</span>
+        <h3>Add New Recruiter</h3>
+        <form method="POST" action="{{ url_for('add_recruiter') }}">
+            <input type="text" name="recruiter_id" placeholder="Recruiter ID" required>
+            <input type="text" name="fname" placeholder="First Name" required>
+            <input type="text" name="lname" placeholder="Last Name" required>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="tel" name="phone" placeholder="Phone" required>
+            <select name="company_id">
+                <option value="">Select Company</option>
+                {% for company in companies %}
+                <option value="{{ company.CompanyID }}">{{ company.Company_Name }}</option>
+                {% endfor %}
+            </select>
+            <select name="supervisor">
+                <option value="">No Supervisor</option>
+                {% for recruiter in all_recruiters %}
+                <option value="{{ recruiter.RecruitmentID }}">{{ recruiter.RecruitmentID }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">Add Recruiter</button>
+        </form>
+    </div>
+</div>
+
+<script type="application/json" id="companies-data">{{ companies|tojson }}</script>
+<script type="application/json" id="recruiters-data">{{ all_recruiters|tojson }}</script>
+<script>
+    const companiesData = JSON.parse(document.getElementById('companies-data').textContent);
+    const recruitersData = JSON.parse(document.getElementById('recruiters-data').textContent);
+
+    function toggleModal(id) {
+        document.getElementById(id).classList.toggle('show');
+    }
+
+    function editRecruiter(id, fname, lname, email, phone, companyId, supervisorId) {
+        const companies = companiesData;
+        const recruiters = recruitersData;
+        const row = event.target.closest('tr');
+
+        // Escape values for HTML
+        const escapeHtml = (text) => {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+
+        fname = escapeHtml(fname || '');
+        lname = escapeHtml(lname || '');
+        email = escapeHtml(email || '');
+        phone = escapeHtml(phone || '');
+        companyId = companyId || '';
+        supervisorId = supervisorId || '';
+
+        row.innerHTML = `
+        <td>${escapeHtml(id)}</td>
+        <td>
+            <input name="fname" type="text" value="${fname}" required style="width:45%;" form="editForm_${id}">
+            <input name="lname" type="text" value="${lname}" required style="width:45%;" form="editForm_${id}">
+        </td>
+        <td>
+            <input name="email" type="email" value="${email}" required style="width:95%;" form="editForm_${id}">
+        </td>
+        <td>
+            <input name="phone" type="tel" value="${phone}" required style="width:95%;" form="editForm_${id}">
+        </td>
+        <td>
+            <select name="company_id" style="width:100%;" form="editForm_${id}">
+                <option value="">Select Company</option>
+                ${companies.map(c => `<option value="${escapeHtml(c.CompanyID)}" ${c.CompanyID === companyId ? 'selected' : ''}>${escapeHtml(c.Company_Name)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select name="supervisor" style="width:100%;" form="editForm_${id}">
+                <option value="">No Supervisor</option>
+                ${recruiters.map(r => `<option value="${escapeHtml(r.RecruitmentID)}" ${r.RecruitmentID === supervisorId ? 'selected' : ''} ${r.RecruitmentID === id ? 'disabled' : ''}>${escapeHtml(r.RecruitmentID)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <form method="POST" action="/recruitment/edit/${id}" id="editForm_${id}">
+                <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                <button type="button" class="btn btn-sm" onclick="window.location.reload()">Cancel</button>
+            </form>
+        </td>
+    `;
+    }
+</script>
+{% endblock %}
