@@ -6,9 +6,9 @@
 <div class="page-header">
     <h2>Companies</h2>
     <div>
-        <a class="btn btn-secondary"
-            href="{{ url_for('companies', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">Sort by ID {% if
-            sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}</a>
+        <a class="btn btn-secondary" href="{{ url_for('companies', sort='id_desc' if sort=='id_asc' else 'id_asc') }}">
+            Sort by ID {% if sort=='id_asc' %}▲{% elif sort=='id_desc' %}▼{% endif %}
+        </a>
         <button class="btn btn-primary" onclick="toggleModal('addCompanyModal')">Add New Company</button>
     </div>
 </div>
@@ -30,7 +30,9 @@
             <td><a href="{{ company.Website }}" target="_blank">{{ company.Website }}</a></td>
             <td>
                 <button class="btn btn-sm"
-                    onclick="editCompany('{{ company.CompanyID }}', '{{ company.Company_Name }}', '{{ company.Website }}')">Edit</button>
+                    onclick="editCompany('{{ company.CompanyID }}', '{{ company.Company_Name }}', '{{ company.Website }}')">
+                    Edit
+                </button>
                 <form method="POST" action="{{ url_for('delete_company', company_id=company.CompanyID) }}"
                     style="display:inline;">
                     <button type="submit" class="btn btn-sm btn-danger"
@@ -56,6 +58,7 @@
     </div>
 </div>
 
+<!-- ✅ Corrected Script Section -->
 <script>
     function toggleModal(id) {
         document.getElementById(id).classList.toggle('show');
@@ -65,17 +68,42 @@
         const row = event.target.closest('tr');
         row.innerHTML = `
         <td>${id}</td>
-        <td><input type="text" value="${name}" name="name"></td>
-        <td><input type="url" value="${website}" name="website"></td>
+        <td><input type="text" id="edit-name-${id}" value="${name}" required></td>
+        <td><input type="url" id="edit-website-${id}" value="${website}" required></td>
         <td>
-            <form method="POST" action="/companies/edit/${id}" style="display:inline;">
-                <input type="hidden" name="name" value="">
-                <input type="hidden" name="website" value="">
-                <button type="submit" class="btn btn-sm">Save</button>
-            </form>
-            <button class="btn btn-sm" onclick="location.reload()">Cancel</button>
+            <button class="btn btn-sm btn-success" onclick="saveCompany('${id}')">Save</button>
+            <button class="btn btn-sm btn-secondary" onclick="location.reload()">Cancel</button>
         </td>
     `;
+    }
+
+    function saveCompany(id) {
+        const name = document.getElementById(`edit-name-${id}`).value.trim();
+        const website = document.getElementById(`edit-website-${id}`).value.trim();
+
+        if (!name || !website) {
+            alert("Company Name and Website are required.");
+            return;
+        }
+
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = `/companies/edit/${id}`;
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "hidden";
+        nameInput.name = "name";
+        nameInput.value = name;
+
+        const websiteInput = document.createElement("input");
+        websiteInput.type = "hidden";
+        websiteInput.name = "website";
+        websiteInput.value = website;
+
+        form.appendChild(nameInput);
+        form.appendChild(websiteInput);
+        document.body.appendChild(form);
+        form.submit();
     }
 </script>
 {% endblock %}

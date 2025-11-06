@@ -4,7 +4,7 @@ from functools import wraps
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this'
+app.secret_key = 'secret-keys'
 
 # Database configuration
 db_config = {
@@ -12,7 +12,7 @@ db_config = {
     'user': 'root',
     'password': 'Mayank@21',
     'database': 'job_application_tracker',
-    'auth_plugin': 'mysql_native_password'  # This fixes the caching_sha2_password issue
+    'auth_plugin': 'mysql_native_password'  
 }
 
 def get_db_connection():
@@ -339,7 +339,6 @@ def add_job():
                 cursor.close()
             db.close()
     return redirect(url_for('jobs'))
-
 @app.route('/jobs/edit/<job_id>', methods=['POST'])
 @login_required
 def edit_job(job_id):
@@ -353,17 +352,17 @@ def edit_job(job_id):
         date_applied = request.form.get('date_applied', '').strip() or None
         street = request.form.get('street', '').strip()
         city = request.form.get('city', '').strip()
-        
+
         if not role or not status:
             flash("Error: Role and Status are required", "error")
             return redirect(url_for('jobs'))
-        
+
         # Validate status matches ENUM
         valid_statuses = ['Applied', 'Interview', 'Rejected', 'Hired', 'Offered', 'Withdrawn']
         if status not in valid_statuses:
             flash(f"Error: Invalid status. Must be one of: {', '.join(valid_statuses)}", "error")
             return redirect(url_for('jobs'))
-        
+
         if date_applied:
             try:
                 date_applied = datetime.strptime(date_applied, '%Y-%m-%d').date()
@@ -372,7 +371,7 @@ def edit_job(job_id):
 
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        
+
         # Check if job exists
         cursor.execute("SELECT * FROM job WHERE JobID=%s", (job_id,))
         if not cursor.fetchone():
@@ -380,35 +379,48 @@ def edit_job(job_id):
             cursor.close()
             db.close()
             return redirect(url_for('jobs'))
-        
+
+        # --- Update main job table ---
         cursor.execute("""
             UPDATE job 
             SET Role=%s, Status=%s, Link=%s, CompanyID=%s, RecruitmentID=%s, Dateofapplication=%s
             WHERE JobID=%s
         """, (role, status, link, company_id, recruitment_id, date_applied, job_id))
 
-        # Upsert job location
+        # --- Update or insert job location safely ---
         if street or city:
-            cursor.execute("""
-                INSERT INTO joblocation (JobID, Street, City) VALUES (%s, %s, %s)
-                ON DUPLICATE KEY UPDATE Street=%s, City=%s
-            """, (job_id, street or None, city or None, street or None, city or None))
+            cursor.execute("SELECT * FROM joblocation WHERE JobID = %s", (job_id,))
+            existing = cursor.fetchone()
+
+            if existing:
+                cursor.execute("""
+                    UPDATE joblocation
+                    SET Street = %s, City = %s
+                    WHERE JobID = %s
+                """, (street, city, job_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO joblocation (JobID, Street, City)
+                    VALUES (%s, %s, %s)
+                """, (job_id, street or None, city or None))
         else:
-            # If empty location provided, remove existing location row
             cursor.execute("DELETE FROM joblocation WHERE JobID=%s", (job_id,))
 
         db.commit()
-        cursor.close()
-        db.close()
         flash("Job updated successfully!", "success")
+
     except Exception as e:
+        if 'db' in locals():
+            db.rollback()
         flash(f"Error updating job: {str(e)}", "error")
         print(f"Edit job error: {str(e)}")
+
     finally:
+        if 'cursor' in locals():
+            cursor.close()
         if 'db' in locals() and db.is_connected():
-            if 'cursor' in locals():
-                cursor.close()
             db.close()
+
     return redirect(url_for('jobs'))
 
 @app.route('/jobs/delete/<job_id>', methods=['POST'])
