@@ -10,8 +10,12 @@
 
 <div class="stats-grid">
     <div class="stat-card">
-        <h3>{{ jobs|length }}</h3>
-        <p>Total Applications</p>
+        <h3>{{ total_apps }}</h3>
+        <p> Applications</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ total_interviews }}</h3>
+        <p>Interviews</p>
     </div>
     <div class="stat-card">
         <h3>{{ jobs|selectattr('Status', 'equalto', 'Interview')|list|length }}</h3>
@@ -76,4 +80,3 @@
     </table>
 </div>
 {% endblock %}
-

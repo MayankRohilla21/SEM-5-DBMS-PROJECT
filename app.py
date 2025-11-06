@@ -157,12 +157,19 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard with job listings"""
+    """Dashboard with job listings and statistics (via MySQL functions)"""
     try:
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        
-        # Get jobs with company and recruiter details
+
+        cursor.execute("SELECT getApplicationcount(%s) AS total_apps", (session['user_id'],))
+        total_apps_result = cursor.fetchone()
+        total_apps = total_apps_result['total_apps'] if total_apps_result else 0
+
+        cursor.execute("SELECT getUserInterviewCount(%s) AS total_interviews", (session['user_id'],))
+        total_interviews_result = cursor.fetchone()
+        total_interviews = total_interviews_result['total_interviews'] if total_interviews_result else 0
+
         query = """
         SELECT 
             j.JobID,
@@ -179,24 +186,31 @@ def dashboard():
             r.Phonenumber as RecruiterPhone,
             jl.Street,
             jl.City
-    FROM job j
-    LEFT JOIN company c ON j.CompanyID = c.CompanyID
-    LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
-    LEFT JOIN joblocation jl ON j.JobID = jl.JobID
+        FROM job j
+        LEFT JOIN company c ON j.CompanyID = c.CompanyID
+        LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
+        LEFT JOIN joblocation jl ON j.JobID = jl.JobID
         WHERE j.JobID IN (SELECT JobID FROM interview_process WHERE UserID = %s)
         ORDER BY j.Dateofapplication DESC
         """
         cursor.execute(query, (session['user_id'],))
         jobs = cursor.fetchall()
-        
+
         cursor.close()
         db.close()
-        print(jobs)
-        return render_template('dashboard.html', jobs=jobs)
+
+        return render_template(
+            'dashboard.html',
+            jobs=jobs,
+            total_apps=total_apps,
+            total_interviews=total_interviews
+        )
+
     except Exception as e:
         flash(f"Error loading dashboard: {str(e)}", "error")
         print(f"Dashboard error: {str(e)}")
-        return render_template('dashboard.html', jobs=[])
+        return render_template('dashboard.html', jobs=[], total_apps=0, total_interviews=0)
+
     finally:
         if 'db' in locals() and db.is_connected():
             if 'cursor' in locals():
@@ -353,16 +367,18 @@ def edit_job(job_id):
         street = request.form.get('street', '').strip()
         city = request.form.get('city', '').strip()
 
+        # ✅ Basic validation
         if not role or not status:
             flash("Error: Role and Status are required", "error")
             return redirect(url_for('jobs'))
 
-        # Validate status matches ENUM
+        # ✅ Validate job status
         valid_statuses = ['Applied', 'Interview', 'Rejected', 'Hired', 'Offered', 'Withdrawn']
         if status not in valid_statuses:
             flash(f"Error: Invalid status. Must be one of: {', '.join(valid_statuses)}", "error")
             return redirect(url_for('jobs'))
 
+        # ✅ Parse date
         if date_applied:
             try:
                 date_applied = datetime.strptime(date_applied, '%Y-%m-%d').date()
@@ -372,22 +388,27 @@ def edit_job(job_id):
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
 
-        # Check if job exists
+        # ✅ Check if job exists
         cursor.execute("SELECT * FROM job WHERE JobID=%s", (job_id,))
         if not cursor.fetchone():
-            flash(f"Error: Job not found", "error")
+            flash("Error: Job not found", "error")
             cursor.close()
             db.close()
             return redirect(url_for('jobs'))
 
-        # --- Update main job table ---
+        # ✅ Update core job fields (except recruiter)
         cursor.execute("""
             UPDATE job 
-            SET Role=%s, Status=%s, Link=%s, CompanyID=%s, RecruitmentID=%s, Dateofapplication=%s
+            SET Role=%s, Status=%s, Link=%s, CompanyID=%s, Dateofapplication=%s
             WHERE JobID=%s
-        """, (role, status, link, company_id, recruitment_id, date_applied, job_id))
+        """, (role, status, link, company_id, date_applied, job_id))
 
-        # --- Update or insert job location safely ---
+        # ✅ Call stored procedure to assign recruiter (if selected)
+        if recruitment_id:
+            cursor.callproc('assignRecruiterToJob', [job_id, recruitment_id])
+            flash(f"Recruiter {recruitment_id} assigned successfully (via procedure).", "info")
+
+        # ✅ Update or insert job location
         if street or city:
             cursor.execute("SELECT * FROM joblocation WHERE JobID = %s", (job_id,))
             existing = cursor.fetchone()
@@ -801,73 +822,43 @@ def interviews():
 @app.route('/interviews/add', methods=['POST'])
 @login_required
 def add_interview():
-    """Add interview"""
+    """Add interview (via stored procedure)"""
     try:
-        interview_id = request.form.get('interview_id', '').strip()
         user_id = request.form.get('user_id', '').strip()
         job_id = request.form.get('job_id', '').strip()
         mode = request.form.get('mode', '').strip()
         date = request.form.get('date', '').strip()
-        rounds = request.form.get('rounds', '1').strip()
-        description = request.form.get('description', '').strip()
-        
-        if not interview_id or not user_id or not job_id or not mode or not date:
-            flash("Error: Interview ID, User, Job, Mode, and Date are required", "error")
+
+        if not user_id or not job_id or not mode or not date:
+            flash("Error: User, Job, Mode, and Date are required", "error")
             return redirect(url_for('interviews'))
-        
-        # Validate mode matches ENUM
+
         valid_modes = ['Online', 'Offline']
         if mode not in valid_modes:
             flash(f"Error: Invalid mode. Must be one of: {', '.join(valid_modes)}", "error")
             return redirect(url_for('interviews'))
-        
-        # Validate rounds
-        try:
-            rounds = int(rounds) if rounds else 1
-            if rounds < 1:
-                rounds = 1
-        except ValueError:
-            rounds = 1
-        
+
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        
-        # Check if interview ID already exists
-        cursor.execute("SELECT * FROM interview WHERE InterviewID=%s", (interview_id,))
-        if cursor.fetchone():
-            flash(f"Error: Interview ID {interview_id} already exists", "error")
-            cursor.close()
-            db.close()
-            return redirect(url_for('interviews'))
-        
-        # Insert interview
-        cursor.execute("INSERT INTO interview (InterviewID, IDate) VALUES (%s, %s)",
-                      (interview_id, date))
-        
-        # Insert interview process
-        cursor.execute("""
-            INSERT INTO interview_process (UserID, InterviewID, JobID, Mode)
-            VALUES (%s, %s, %s, %s)
-        """, (user_id, interview_id, job_id, mode))
-        
-        # Insert rounds (always insert at least one)
-        cursor.execute("""
-            INSERT INTO roundsofinterview (InterviewID, Rounds, RoundStatus, Description)
-            VALUES (%s, %s, 'Pending', %s)
-        """, (interview_id, rounds, description or 'Initial round scheduled.'))
-        
+
+        cursor.callproc('scheduleInterview', [user_id, job_id, date, mode])
+
         db.commit()
         cursor.close()
         db.close()
-        flash("Interview scheduled successfully!", "success")
+
+        flash("Interview scheduled successfully using stored procedure!", "success")
+
     except Exception as e:
         flash(f"Error adding interview: {str(e)}", "error")
-        print(f"Add interview error: {str(e)}")
+        print(f"Add interview (procedure) error: {str(e)}")
+
     finally:
+        if 'cursor' in locals():
+            cursor.close()
         if 'db' in locals() and db.is_connected():
-            if 'cursor' in locals():
-                cursor.close()
             db.close()
+
     return redirect(url_for('interviews'))
 
 @app.route('/interviews/edit/<interview_id>', methods=['POST'])
