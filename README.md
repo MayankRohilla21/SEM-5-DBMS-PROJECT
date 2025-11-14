@@ -1,187 +1,193 @@
-# Job Application Tracker
+📝 Job Application Tracker – Flask + MySQL
 
-A comprehensive web application for tracking job applications, built with Flask, MySQL, HTML, and CSS.
+A full-stack web application designed to help users efficiently monitor and manage job applications, interviews, attachments, companies, and recruiters.
+Built using Flask (Python) and MySQL, the project demonstrates relational database design, triggers, procedures, functions, joins, and authenticated CRUD operations.
 
-## Features
+📌 Project Overview
 
-- ✅ **User Authentication**: Login and Sign Up with session management
-- ✅ **Job Management**: Add, edit, and delete job applications
-- ✅ **Company Management**: Manage company information
-- ✅ **Recruitment Management**: Track recruiter details
-- ✅ **Interview Scheduling**: Schedule and manage interviews
-- ✅ **Attachment Management**: Upload and manage documents (Resume, Cover Letter, Portfolio, etc.)
-- ✅ **Dashboard**: Overview of all applications with statistics
-- ✅ **Profile Management**: Update user profile and contact information
-- ✅ **Database Triggers**: Data validation and integrity checks
+The Job Application Tracker allows users to manage every stage of the job-seeking process—from applying to jobs, scheduling interviews, tracking rounds, managing attachments, and storing recruiter/company details.
 
-## Installation
+The system supports two roles:
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd DBMS-PROJECT
-   ```
+User – Can manage only their data
 
-2. **Create virtual environment**
-   ```bash
-   python -m venv .venv
-   
-   # On Windows
-   .venv\Scripts\activate
-   
-   # On Linux/Mac
-   source .venv/bin/activate
-   ```
+Admin – Full CRUD access to all tables and dashboard statistics
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+This project is ideal for PES University students or any college student building a DBMS or web-database project.
 
-4. **Set up MySQL database**
-   - Create a MySQL database
-   - Update `db_config` in `app.py` with your MySQL credentials
-   - Run the SQL setup file:
-   ```bash
-   mysql -u root -p < database_setup.sql
-   ```
+🚀 Features
+👤 User & Authentication
 
-5. **Run the application**
-   ```bash
-   python app.py
-   ```
+User signup + login with session-based authentication
 
-6. **Access the application**
-   - Open your browser and go to: `http://localhost:5000`
+Auto-generated UserID
 
-## Database Structure
+Editable profile
 
-The application uses the following main tables:
+Multi-valued phone numbers using separate UserPhone table
 
-- **Users**: Store user information and credentials
-- **Company**: Company details
-- **Recruitment**: Recruiter information
-- **Job**: Job application details
-- **Interview**: Interview scheduling
-- **Interview_Process**: Links users to interviews and jobs
-- **Attachments**: User documents (Resume, Cover Letter, etc.)
-- **RoundsofInterview**: Interview round details
-- **JobLocation**: Job location information
-- **UserPhone**: User phone numbers
+💼 Job Management
 
-## Database Triggers
+Add, edit, delete job entries
 
-The application includes several triggers for data validation:
+Track job roles, dates, statuses, links
 
-1. **DOB Validation**: Ensures date of birth is not in the future
-2. **Phone Number Uniqueness**: Validates phone numbers are unique
-3. **Email Uniqueness**: Validates recruitment emails are unique
-4. **Interview Date Validation**: Ensures interview dates are reasonable
-5. **Auto Interview ID Generation**: Automatically generates interview IDs
+Store job location (Street, City)
 
-## Stored Procedures
+Recruiter assignment via stored procedure
 
-1. `getApplicationCount(user_id)`: Get count of applications for a user
-2. `getUserInterviewCount(user_id)`: Get count of interviews for a user
-3. `assignRecruiterToJob(job_id, recruiter_id)`: Assign recruiter to a job
-4. `scheduleInterview(user_id, job_id, date, mode)`: Schedule a new interview
+Auto-create interview + round entries when a job is added
 
-## Usage
+📝 Interview Management
 
-1. **Login**: Use your credentials or sign up for a new account
-2. **Dashboard**: View all your job applications at a glance
-3. **Add Jobs**: Click "Add New Job" to track new applications
-4. **Manage Companies**: Add and manage company information
-5. **Schedule Interviews**: Add interview details and track progress
-6. **Upload Attachments**: Manage your documents (Resume, Cover Letter, etc.)
-7. **Update Profile**: Edit your personal information
+Schedule interviews using procedure scheduleInterview
 
-## Project Structure
+Edit interview mode, date, round status, number of rounds
 
-```
-DBMS-PROJECT/
-├── app.py                  # Main Flask application
-├── database_setup.sql      # Database setup with triggers
-├── requirements.txt         # Python dependencies
-├── README.md               # This file
-├── static/
-│   └── style.css          # CSS styling
-└── templates/
-    ├── base.html          # Base template
-    ├── login.html         # Login page
-    ├── signup.html        # Sign up page
-    ├── dashboard.html     # Dashboard
-    ├── jobs.html          # Jobs management
-    ├── companies.html     # Companies management
-    ├── recruitment.html   # Recruitment management
-    ├── interviews.html    # Interviews management
-    ├── attachments.html   # Attachments management
-    └── profile.html       # User profile
-```
+View only user’s interviews (admin sees all)
 
-## Configuration
+Uses JOIN queries combining:
 
-Update the database configuration in `app.py`:
+Interview
 
-```python
+Interview_Process
+
+Job
+
+Users
+
+RoundsOfInterview
+
+📎 Attachment Management
+
+Upload and categorize attachments (Resume, Portfolio, Cover Letter, Others)
+
+View only own attachments unless admin
+
+CRUD supported via controlled access
+
+🏢 Company & Recruitment
+
+Add/manage companies
+
+Add/manage recruiters
+
+Supervisor hierarchy
+
+Recruiter-to-job assignment using procedure assignRecruiterToJob
+
+📊 Dashboard (User/Admin)
+
+Total job applications
+
+Total interviews
+
+Hired / Rejected / Offered / Withdrawn counts
+
+Admin sees global stats
+
+Users see personalized stats via SQL functions:
+
+getApplicationCount()
+
+getUserInterviewCount()
+
+🛠️ Tech Stack
+Layer	Technology
+Backend	Flask (Python)
+Database	MySQL
+Frontend	HTML, CSS
+Auth	Flask Sessions
+DB Logic	SQL Functions, Procedures, Triggers
+🗄️ Database Features
+✔ Functions
+
+getApplicationCount(user_id)
+
+getUserInterviewCount(user_id)
+
+✔ Stored Procedures
+
+assignRecruiterToJob(job_id, recruiter_id)
+
+scheduleInterview(user_id, job_id, date, mode)
+
+✔ Triggers
+
+DOB validation trigger
+
+Auto-generate interview data
+
+Ensure relational integrity
+
+✔ Queries Implemented
+
+Nested query → Used for dashboard job filtering
+
+Join query → Used heavily in /interviews route
+
+Aggregate query → Used in dashboard stats
+
+📂 Project Structure
+project/
+│── app.py
+│── templates/
+│      ├── dashboard.html
+│      ├── jobs.html
+│      ├── interviews.html
+│      ├── companies.html
+│      ├── recruitment.html
+│      ├── attachments.html
+│      ├── profile.html
+│      ├── login.html
+│      ├── signup.html
+│── static/
+│      ├── style.css
+│── database/
+│      ├── schema.sql
+│      ├── triggers.sql
+│      ├── procedures.sql
+│      ├── functions.sql
+│── README.md
+
+⚙️ Installation & Setup
+1️⃣ Clone the repository
+git clone https://github.com/your-username/job-application-tracker.git
+cd job-application-tracker
+
+2️⃣ Install dependencies
+pip install -r requirements.txt
+
+3️⃣ Configure MySQL connection
+
+In app.py, update:
+
 db_config = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'YourPassword',
-    'database': 'job_application_tracker'
+    'password': 'YOUR_PASSWORD',
+    'database': 'job_application_tracker',
+    'auth_plugin': 'mysql_native_password'
 }
-```
 
-Also update the Flask secret key:
+4️⃣ Import database SQL
 
-```python
-app.secret_key = 'your-secret-key-change-this'
-```
+Open MySQL Workbench → Run:
 
-## Screenshots
+schema.sql
 
-- **Dashboard**: Overview with statistics and recent applications
-- **Jobs Table**: Complete job application details
-- **Interview Tracking**: Schedule and manage interviews
-- **Document Management**: Upload and organize your documents
+functions.sql
 
-## Features Summary
+procedures.sql
 
-| Feature | Status |
-|---------|--------|
-| User Authentication | ✅ Complete |
-| Job CRUD Operations | ✅ Complete |
-| Company Management | ✅ Complete |
-| Recruiter Management | ✅ Complete |
-| Interview Scheduling | ✅ Complete |
-| Attachment Management | ✅ Complete |
-| Profile Management | ✅ Complete |
-| Database Triggers | ✅ Complete |
-| Responsive Design | ✅ Complete |
+triggers.sql
 
-## Future Enhancements
-
-- [ ] Email notifications for interview reminders
-- [ ] Export job applications to PDF/Excel
-- [ ] Advanced filtering and search
-- [ ] Dark mode theme
-- [ ] File upload functionality for attachments
-- [ ] Calendar view for interviews
-- [ ] Analytics dashboard with charts
-
-## Technologies Used
-
-- **Backend**: Flask (Python)
-- **Database**: MySQL
-- **Frontend**: HTML5, CSS3
-- **Styling**: Modern gradient design with responsive layout
-
-## Author
-
-Your Name
-
-## License
-
-This project is for educational purposes.
+5️⃣ Run the app
+python app.py
 
 
+App runs at:
+
+http://127.0.0.1:5000/
+
+<img width="1687" height="894" alt="image" src="https://github.com/user-attachments/assets/f62fb2a8-4e0b-4460-be3b-e2fabcc88d99" />
