@@ -18,10 +18,6 @@
         <p>Interviews</p>
     </div>
     <div class="stat-card">
-        <h3>{{ jobs|selectattr('Status', 'equalto', 'Interview')|list|length }}</h3>
-        <p>Interviews</p>
-    </div>
-    <div class="stat-card">
         <h3>{{ jobs|selectattr('Status', 'equalto', 'Hired')|list|length }}</h3>
         <p>Hired</p>
     </div>

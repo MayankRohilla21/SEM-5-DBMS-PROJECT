@@ -57,6 +57,7 @@ def login():
                 session['user_id'] = user['UserID']
                 session['user_name'] = user['FName']
                 session['user_email'] = user['Email']
+                session['is_admin'] = (user['UserID'] == 'U015')  
                 flash("Login successful!", "success")
                 cursor.close()
                 db.close()
@@ -157,20 +158,32 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Dashboard with job listings and statistics (via MySQL functions)"""
+    """Dashboard with job listings and statistics (admin-aware + MySQL functions)"""
     try:
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
 
-        cursor.execute("SELECT getApplicationcount(%s) AS total_apps", (session['user_id'],))
-        total_apps_result = cursor.fetchone()
-        total_apps = total_apps_result['total_apps'] if total_apps_result else 0
+        # ✅ Step 1: Get statistics
+        if session.get('is_admin'):
+            # Admin: show total counts across the entire system
+            cursor.execute("SELECT COUNT(*) AS total_apps FROM job")
+            total_apps = cursor.fetchone()['total_apps']
 
-        cursor.execute("SELECT getUserInterviewCount(%s) AS total_interviews", (session['user_id'],))
-        total_interviews_result = cursor.fetchone()
-        total_interviews = total_interviews_result['total_interviews'] if total_interviews_result else 0
+            # ✅ FIXED: Count ALL interviews from 'interview' table, not 'interview_process'
+            cursor.execute("SELECT COUNT(*) AS total_interviews FROM interview")
+            total_interviews = cursor.fetchone()['total_interviews']
+        else:
+            # ✅ Normal user: use SQL functions for personalized stats
+            cursor.execute("SELECT getApplicationcount(%s) AS total_apps", (session['user_id'],))
+            total_apps_result = cursor.fetchone()
+            total_apps = total_apps_result['total_apps'] if total_apps_result else 0
 
-        query = """
+            cursor.execute("SELECT getUserInterviewCount(%s) AS total_interviews", (session['user_id'],))
+            total_interviews_result = cursor.fetchone()
+            total_interviews = total_interviews_result['total_interviews'] if total_interviews_result else 0
+
+        # ✅ Step 2: Jobs listing (admin sees all, users see their own)
+        base_query = """
         SELECT 
             j.JobID,
             j.Role,
@@ -190,10 +203,22 @@ def dashboard():
         LEFT JOIN company c ON j.CompanyID = c.CompanyID
         LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
         LEFT JOIN joblocation jl ON j.JobID = jl.JobID
-        WHERE j.JobID IN (SELECT JobID FROM interview_process WHERE UserID = %s)
-        ORDER BY j.Dateofapplication DESC
         """
-        cursor.execute(query, (session['user_id'],))
+
+        if session.get('is_admin'):
+            # Admin: see all jobs
+            query = base_query + " ORDER BY j.Dateofapplication DESC"
+            cursor.execute(query)
+        else:
+            # User: only see their applied/interviewed jobs
+            query = base_query + """
+                WHERE j.JobID IN (
+                    SELECT JobID FROM interview_process WHERE UserID = %s
+                )
+                ORDER BY j.Dateofapplication DESC
+            """
+            cursor.execute(query, (session['user_id'],))
+
         jobs = cursor.fetchall()
 
         cursor.close()
@@ -217,6 +242,7 @@ def dashboard():
                 cursor.close()
             db.close()
 
+
 # =====================================================
 # JOBS CRUD
 # =====================================================
@@ -237,21 +263,32 @@ def jobs():
             order_clause = 'ORDER BY j.JobID DESC'
         else:
             order_clause = 'ORDER BY j.Dateofapplication DESC'
+        if session.get('is_admin'):
+            query = f"""
+                SELECT j.*, c.Company_Name, r.FName as RecruiterFName, r.LName as RecruiterLName,
+                       jl.Street, jl.City
+                FROM job j
+                LEFT JOIN company c ON j.CompanyID = c.CompanyID
+                LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
+                LEFT JOIN joblocation jl ON j.JobID = jl.JobID
+                {order_clause}
+            """
+            cursor.execute(query)
+        else:
+            query = f"""
+                SELECT j.*, c.Company_Name, r.FName as RecruiterFName, r.LName as RecruiterLName,
+                       jl.Street, jl.City
+                FROM job j
+                LEFT JOIN company c ON j.CompanyID = c.CompanyID
+                LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
+                LEFT JOIN joblocation jl ON j.JobID = jl.JobID
+                WHERE j.JobID IN (SELECT JobID FROM interview_process WHERE UserID = %s)
+                {order_clause}
+            """
+            cursor.execute(query, (session['user_id'],))
 
-        query = f"""
-            SELECT j.*, c.Company_Name, r.FName as RecruiterFName, r.LName as RecruiterLName,
-                   jl.Street, jl.City
-            FROM job j
-            LEFT JOIN company c ON j.CompanyID = c.CompanyID
-            LEFT JOIN recruitment r ON j.RecruitmentID = r.RecruitmentID
-            LEFT JOIN joblocation jl ON j.JobID = jl.JobID
-            WHERE j.JobID IN (SELECT JobID FROM interview_process WHERE UserID = %s)
-            {order_clause}
-        """
-        cursor.execute(query, (session['user_id'],))
         jobs = cursor.fetchall()
         
-        # Get companies and recruiters for dropdown
         cursor.execute("SELECT CompanyID, Company_Name FROM company")
         companies = cursor.fetchall()
         
@@ -771,29 +808,55 @@ def interviews():
         else:
             order_clause = 'ORDER BY i.IDate IS NULL, i.IDate DESC, COALESCE(ip.InterviewID, i.InterviewID) DESC'
 
-        query = f"""
-            SELECT 
-                COALESCE(ip.InterviewID, i.InterviewID) AS InterviewID,
-                ip.UserID,
-                ip.JobID,
-                ip.Mode,
-                i.IDate,
-                j.Role,
-                u.FName,
-                u.LName,
-                COALESCE(r.RoundStatus, 'Pending') as RoundStatus,
-                r.Description,
-                r.Rounds
-            FROM interview i
-            LEFT JOIN interview_process ip ON i.InterviewID = ip.InterviewID
-            LEFT JOIN job j ON ip.JobID = j.JobID
-            LEFT JOIN users u ON ip.UserID = u.UserID
-            LEFT JOIN roundsofinterview r ON i.InterviewID = r.InterviewID
-            WHERE ip.UserID = %s
-            {order_clause}
-        """
-        cursor.execute(query, (session['user_id'],))
+                # ✅ Admin can see all interviews, normal users see only their own
+        if session.get('is_admin'):
+            query = f"""
+                SELECT 
+                    COALESCE(ip.InterviewID, i.InterviewID) AS InterviewID,
+                    ip.UserID,
+                    ip.JobID,
+                    ip.Mode,
+                    i.IDate,
+                    j.Role,
+                    u.FName,
+                    u.LName,
+                    COALESCE(r.RoundStatus, 'Pending') as RoundStatus,
+                    r.Description,
+                    r.Rounds
+                FROM interview i
+                LEFT JOIN interview_process ip ON i.InterviewID = ip.InterviewID
+                LEFT JOIN job j ON ip.JobID = j.JobID
+                LEFT JOIN users u ON ip.UserID = u.UserID
+                LEFT JOIN roundsofinterview r ON i.InterviewID = r.InterviewID
+                {order_clause}
+            """
+            cursor.execute(query)
+        else:
+            query = f"""
+                SELECT 
+                    COALESCE(ip.InterviewID, i.InterviewID) AS InterviewID,
+                    ip.UserID,
+                    ip.JobID,
+                    ip.Mode,
+                    i.IDate,
+                    j.Role,
+                    u.FName,
+                    u.LName,
+                    COALESCE(r.RoundStatus, 'Pending') as RoundStatus,
+                    r.Description,
+                    r.Rounds
+                FROM interview i
+                LEFT JOIN interview_process ip ON i.InterviewID = ip.InterviewID
+                LEFT JOIN job j ON ip.JobID = j.JobID
+                LEFT JOIN users u ON ip.UserID = u.UserID
+                LEFT JOIN roundsofinterview r ON i.InterviewID = r.InterviewID
+                WHERE ip.UserID = %s
+                {order_clause}
+            """
+            cursor.execute(query, (session['user_id'],))
+
         interviews = cursor.fetchall()
+
 
         # Debug: Print the count and first few records
         print(f"Found {len(interviews)} interviews")
@@ -864,128 +927,128 @@ def add_interview():
 @app.route('/interviews/edit/<interview_id>', methods=['POST'])
 @login_required
 def edit_interview(interview_id):
-    """Edit interview"""
+    """Edit interview — admin can edit all, users only their own"""
     try:
         date = request.form.get('date', '').strip()
         mode = request.form.get('mode', '').strip()
         round_status = request.form.get('round_status', '').strip()
         rounds = request.form.get('rounds', '').strip()
         description = request.form.get('description', '').strip()
-        
+
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        
-    # Check if interview exists
+
+        # ✅ Step 1: Check if interview exists
         cursor.execute("SELECT * FROM interview WHERE InterviewID=%s", (interview_id,))
-        if not cursor.fetchone():
-            flash(f"Error: Interview not found", "error")
-            cursor.close()
-            db.close()
+        interview = cursor.fetchone()
+        if not interview:
+            flash("Error: Interview not found", "error")
             return redirect(url_for('interviews'))
-        
-        # Validate mode if provided
+
+        # ✅ Step 2: Check who owns the interview
+        cursor.execute("SELECT UserID FROM interview_process WHERE InterviewID=%s", (interview_id,))
+        owner = cursor.fetchone()
+
+        # ✅ Step 3: Restrict non-admin users
+        if not session.get('is_admin') and (not owner or owner['UserID'] != session['user_id']):
+            flash("Error: You are not authorized to edit this interview.", "error")
+            return redirect(url_for('interviews'))
+
+        # ✅ Step 4: Validate inputs
         if mode:
             valid_modes = ['Online', 'Offline']
             if mode not in valid_modes:
                 flash(f"Error: Invalid mode. Must be one of: {', '.join(valid_modes)}", "error")
-                cursor.close()
-                db.close()
                 return redirect(url_for('interviews'))
-        
-        # Validate RoundStatus if provided
+
         if round_status:
             valid_statuses = ['Pending', 'Completed', 'In Progress', 'Cancelled']
             if round_status not in valid_statuses:
                 flash(f"Error: Invalid round status. Must be one of: {', '.join(valid_statuses)}", "error")
-                cursor.close()
-                db.close()
                 return redirect(url_for('interviews'))
-        
-        # Validate and parse rounds
+
         try:
             rounds_int = int(rounds) if rounds else None
             if rounds_int and rounds_int < 1:
                 rounds_int = 1
         except (ValueError, TypeError):
             rounds_int = None
-        
-        # Update Interview table (date)
+
+        # ✅ Step 5: Update tables
         if date:
-            cursor.execute("""
-                UPDATE interview 
-                SET IDate = %s
-                WHERE InterviewID = %s
-            """, (date, interview_id))
-        
-        # Update Interview_Process table (mode)
+            cursor.execute("UPDATE interview SET IDate=%s WHERE InterviewID=%s", (date, interview_id))
         if mode:
-            cursor.execute("""
-                UPDATE interview_process 
-                SET Mode = %s
-                WHERE InterviewID = %s
-            """, (mode, interview_id))
-        
-        # Update RoundsofInterview table (rounds, status, description)
-        # First check if record exists
-        cursor.execute("SELECT * FROM roundsofinterview WHERE InterviewID = %s", (interview_id,))
+            cursor.execute("UPDATE interview_process SET Mode=%s WHERE InterviewID=%s", (mode, interview_id))
+
+        cursor.execute("SELECT * FROM roundsofinterview WHERE InterviewID=%s", (interview_id,))
         round_exists = cursor.fetchone()
-        
+
         if round_exists:
-            # Update existing round - use existing values if not provided
-            update_rounds = rounds_int if rounds_int else round_exists['Rounds']
-            update_status = round_status if round_status else round_exists['RoundStatus']
-            update_description = description if description else round_exists.get('Description', '')
-            
             cursor.execute("""
-                UPDATE roundsofinterview 
-                SET Rounds = %s, RoundStatus = %s, Description = %s
-                WHERE InterviewID = %s
-            """, (update_rounds, update_status, update_description, interview_id))
+                UPDATE roundsofinterview
+                SET Rounds=%s, RoundStatus=%s, Description=%s
+                WHERE InterviewID=%s
+            """, (
+                rounds_int if rounds_int else round_exists['Rounds'],
+                round_status if round_status else round_exists['RoundStatus'],
+                description if description else round_exists['Description'],
+                interview_id
+            ))
         else:
-            # Insert new round if it doesn't exist
-            insert_rounds = rounds_int if rounds_int else 1
-            insert_status = round_status if round_status else 'Pending'
             cursor.execute("""
                 INSERT INTO roundsofinterview (InterviewID, Rounds, RoundStatus, Description)
                 VALUES (%s, %s, %s, %s)
-            """, (interview_id, insert_rounds, insert_status, description or 'Initial round scheduled.'))
-        
+            """, (interview_id, rounds_int or 1, round_status or 'Pending', description or 'Initial round scheduled.'))
+
         db.commit()
-        cursor.close()
-        db.close()
         flash("Interview updated successfully!", "success")
+
     except Exception as e:
+        if 'db' in locals():
+            db.rollback()
         flash(f"Error updating interview: {str(e)}", "error")
         print(f"Edit interview error: {str(e)}")
+
     finally:
+        if 'cursor' in locals():
+            cursor.close()
         if 'db' in locals() and db.is_connected():
-            if 'cursor' in locals():
-                cursor.close()
             db.close()
+
     return redirect(url_for('interviews'))
 
 @app.route('/interviews/delete/<interview_id>', methods=['POST'])
 @login_required
 def delete_interview(interview_id):
-    """Delete interview"""
+    """Delete interview — admin can delete all, users only their own"""
     try:
         db = get_db_connection()
         cursor = db.cursor(dictionary=True)
-        # Note: Due to CASCADE DELETE, deleting from interview will automatically
-        # delete related records in interview_process and roundsofinterview
+
+        # ✅ Step 1: Check interview ownership
+        cursor.execute("SELECT UserID FROM interview_process WHERE InterviewID=%s", (interview_id,))
+        owner = cursor.fetchone()
+
+        # ✅ Step 2: Restrict normal users
+        if not session.get('is_admin') and (not owner or owner['UserID'] != session['user_id']):
+            flash("Error: You are not authorized to delete this interview.", "error")
+            return redirect(url_for('interviews'))
+
+        # ✅ Step 3: Proceed with delete
         cursor.execute("DELETE FROM interview WHERE InterviewID=%s", (interview_id,))
         db.commit()
-        cursor.close()
-        db.close()
         flash("Interview deleted successfully!", "success")
+
     except Exception as e:
         flash(f"Error deleting interview: {str(e)}", "error")
         print(f"Delete interview error: {str(e)}")
+
     finally:
+        if 'cursor' in locals():
+            cursor.close()
         if 'db' in locals() and db.is_connected():
-            if 'cursor' in locals():
-                cursor.close()
             db.close()
+
     return redirect(url_for('interviews'))
 
 # =====================================================
@@ -1008,16 +1071,27 @@ def attachments():
         else:
             order_clause = 'ORDER BY a.Type, a.AttachmentID'
 
-        # Show only attachments belonging to the logged-in user
-        query = f"""
-            SELECT a.*, u.FName, u.LName
-            FROM attachments a
-            LEFT JOIN users u ON a.UserID = u.UserID
-            WHERE a.UserID = %s
-            {order_clause}
-        """
-        cursor.execute(query, (session['user_id'],))
+                # ✅ Admin can see all attachments, normal users see only their own
+        if session.get('is_admin'):
+            query = f"""
+                SELECT a.*, u.FName, u.LName
+                FROM attachments a
+                LEFT JOIN users u ON a.UserID = u.UserID
+                {order_clause}
+            """
+            cursor.execute(query)
+        else:
+            query = f"""
+                SELECT a.*, u.FName, u.LName
+                FROM attachments a
+                LEFT JOIN users u ON a.UserID = u.UserID
+                WHERE a.UserID = %s
+                {order_clause}
+            """
+            cursor.execute(query, (session['user_id'],))
+
         attachments = cursor.fetchall()
+
         
         # Debug: Print the count and first few records
         print(f"Found {len(attachments)} attachments")
@@ -1105,7 +1179,7 @@ def edit_attachment(attachment_id):
             return redirect(url_for('attachments'))
 
         # Restrict editing to owner
-        if attachment.get('UserID') != session['user_id']:
+        if not session.get('is_admin') and attachment.get('UserID') != session['user_id']:
             flash("Error: You are not authorized to edit this attachment", "error")
             db.close()
             return redirect(url_for('attachments'))
@@ -1145,7 +1219,7 @@ def delete_attachment(attachment_id):
             cursor.close()
             db.close()
             return redirect(url_for('attachments'))
-        if att.get('UserID') != session['user_id']:
+        if not session.get('is_admin') and att.get('UserID') != session['user_id']:
             flash("Error: You are not authorized to delete this attachment", "error")
             cursor.close()
             db.close()
